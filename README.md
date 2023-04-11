@@ -1,1 +1,1 @@
-# golang-IM-system
+# 即时通讯系统
