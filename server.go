@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"time"
 )
 
 type Server struct {
@@ -31,7 +32,7 @@ func NewServer(ip string, port int) *Server {
 	return server
 }
 
-//监听Message广播消息channel的goroutine，一旦有消息就发送给所有的在线user
+// 监听Message广播消息channel的goroutine，一旦有消息就发送给所有的在线user
 func (this *Server) ListenMessage() {
 	for {
 		msg := <-this.Message
@@ -44,7 +45,7 @@ func (this *Server) ListenMessage() {
 	}
 }
 
-//广播消息的方法
+// 广播消息的方法
 func (this *Server) BroadCast(user *User, msg string) {
 	sendMsg := "[" + user.Addr + "]" + user.Name + ":" + msg
 	this.Message <- sendMsg
@@ -57,6 +58,9 @@ func (this *Server) Handler(conn net.Conn) {
 	user := NewUser(conn, this)
 
 	user.Online()
+
+	//监听用户是否活跃的channel
+	isLive := make(chan bool)
 
 	//接收客户端传递的消息
 	go func() {
@@ -78,11 +82,34 @@ func (this *Server) Handler(conn net.Conn) {
 
 			//用户针对msg进行消息处理
 			user.DoMessage(msg)
+
+			//用户的任意消息，代表当前用户是一个活跃的
+			isLive <- true
 		}
 	}()
 
 	//当前handler阻塞
-	select {}
+	for {
+		select {
+		case <-isLive:
+			//当前用户是活跃的，应该重置计时器
+			//不做任何事情，为了激活select，更新下面的定时器
+		case <-time.After(time.Second * 10):
+			//已经超时
+			//将当前的user强制关闭
+
+			user.SendMsg("你被踢了")
+
+			//销毁用的资源
+			close(user.C)
+
+			//关闭连接
+			conn.Close()
+
+			//退出当前的handler
+			return
+		}
+	}
 }
 
 // Start 启动服务器的接口
